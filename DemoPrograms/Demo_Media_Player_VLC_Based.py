@@ -8,6 +8,8 @@
         pip install youtube-dl
 """
 import PySimpleGUI as sg
+import os
+os.add_dll_directory(os.getcwd()) # important for python version after 3.8
 import vlc
 from sys import platform as PLATFORM
 
@@ -16,14 +18,14 @@ from sys import platform as PLATFORM
 sg.theme('DarkBlue')
 
 def btn(name):  # a PySimpleGUI "User Defined Element" (see docs)
-    return sg.Button(name, size=(6, 1), pad=(1, 1))
+    return sg.Button(name, size=(6, 1))
 
 layout = [[sg.Input(default_text='Video URL or Local Path:', size=(30, 1), key='-VIDEO_LOCATION-'), sg.Button('load')],
-          [sg.Image('', size=(300, 170), key='-VID_OUT-')],
+          [sg.Image('', size=(300, 170), pad=(0, 0), key='-VID_OUT-')],
           [btn('previous'), btn('play'), btn('next'), btn('pause'), btn('stop')],
           [sg.Text('Load media to start', key='-MESSAGE_AREA-')]]
 
-window = sg.Window('Mini Player', layout, element_justification='center', finalize=True, resizable=True)
+window = sg.Window('Mini Player', layout, element_justification='center', margins = (0, 0), finalize=True, resizable=True)
 
 window['-VID_OUT-'].expand(True, True)                # type: sg.Element
 #------------ Media Player Setup ---------#
