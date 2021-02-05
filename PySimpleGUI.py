@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-version = __version__ = "4.34.0.13 Unreleased\nSDK Help Expanded to init & update parms, SDK Help function search, files_delimiter added to FilesBrowse & popup_get_file, SDK help sort by case, popup_get_file fixed default_extension not being passed to button correctly, changed themes so that spaces can be used in defined name, addition of subprocess non-blocking launcher, fix for Debug button color, set_option for default user_settings path to override normal default, define a truly global PySimpleGUI settings path, theme_global() gets the theme for all progams, execute_subprocess_nonblocking bug fix, mark when strout/stderr is restored in multiline elem, Listbox element convert values to list when updated, Column will expand row if y expand set to True"
+version = __version__ = "4.34.0.17 Unreleased\nSDK Help Expanded to init & update parms, SDK Help function search, files_delimiter added to FilesBrowse & popup_get_file, SDK help sort by case, popup_get_file fixed default_extension not being passed to button correctly, changed themes so that spaces can be used in defined name, addition of subprocess non-blocking launcher, fix for Debug button color, set_option for default user_settings path to override normal default, define a truly global PySimpleGUI settings path, theme_global() gets the theme for all progams, execute_subprocess_nonblocking bug fix, mark when strout/stderr is restored in multiline elem, Listbox element convert values to list when updated, Column will expand row if y expand set to True, Added color/c parm to debug print, update graph coordinates if a user bound event happens, another attempt at graphs with user events, update mouse location when right click menu item selected, links added to SDK help"
 
 __version__ = version.split()[0]    # For PEP 396 and PEP 345
 
@@ -845,7 +845,8 @@ class Element():
         """
         self.TKRightClickMenu.tk_popup(event.x_root, event.y_root, 0)
         self.TKRightClickMenu.grab_release()
-
+        if self.Type == ELEM_TYPE_GRAPH:
+            self._update_position_for_returned_values(event)
 
     def _MenuItemChosenCallback(self, item_chosen):  # TEXT Menu item callback
         """
@@ -1066,6 +1067,8 @@ class Element():
         """
         key_suffix = self.user_bind_dict.get(bind_string, '')
         self.user_bind_event = event
+        if self.Type == ELEM_TYPE_GRAPH:
+            self._update_position_for_returned_values(event)
         if self.Key is not None:
             if isinstance(self.Key, str):
                 key = self.Key + str(key_suffix)
@@ -5075,6 +5078,19 @@ class Graph(Element):
         #     self.ParentForm.TKroot.quit()  # kick out of loop if read was called
         _exit_mainloop(self.ParentForm)
         self.MouseButtonDown = True
+
+
+    def _update_position_for_returned_values(self, event):
+        """
+        Updates the variable that's used when the values dictionary is returned from a window read.
+
+        Not called by the user.  It's called from another method/function that tkinter calledback
+
+        :param event: (event) event info from tkinter. Contains the x and y coordinates of a click
+        """
+
+        self.ClickPosition = self._convert_canvas_xy_to_xy(event.x, event.y)
+
 
     # button callback
     def motion_call_back(self, event):
@@ -12771,8 +12787,7 @@ def PackFormIntoFrame(form, containing_frame, toplevel_form):
                 element = element  # type: Canvas
                 width, height = element_size
                 if element._TKCanvas is None:
-                    element._TKCanvas = tk.Canvas(tk_row_frame, width=width, height=height,
-                                                  bd=border_depth)
+                    element._TKCanvas = tk.Canvas(tk_row_frame, width=width, height=height, bd=border_depth)
                 else:
                     element._TKCanvas.master = tk_row_frame
                 if element.BackgroundColor is not None and element.BackgroundColor != COLOR_SYSTEM_DEFAULT:
@@ -13982,9 +13997,16 @@ def PrintClose():
 
 
 def easy_print(*args, size=(None, None), end=None, sep=None, location=(None, None), font=None, no_titlebar=False,
-              no_button=False, grab_anywhere=False, keep_on_top=False, do_not_reroute_stdout=True, text_color=None, background_color=None):
+              no_button=False, grab_anywhere=False, keep_on_top=False, do_not_reroute_stdout=True, text_color=None, background_color=None,  colors=None, c=None):
     """
     Works like a "print" statement but with windowing options.  Routes output to the "Debug Window"
+
+    In addition to the normal text and background colors, you can use a "colors" tuple/string
+    The "colors" or "c" parameter defines both the text and background in a single parm.
+    It can be a tuple or a single single. Both text and background colors need to be specified
+    colors -(str, str) or str.  A combined text/background color definition in a single parameter
+    c - Tuple[str, str] - Colors tuple has format (foreground, backgrouned)
+    c - str - can also be a string of the format "foreground on background"  ("white on red")
 
     :param *args: stuff to output
     :type *args: (Any)
@@ -14014,6 +14036,10 @@ def easy_print(*args, size=(None, None), end=None, sep=None, location=(None, Non
     :type location: Tuple[int, int]
     :param do_not_reroute_stdout: do not reroute stdout
     :type do_not_reroute_stdout: (bool)
+    :param colors: Either a tuple or a string that has both the text and background colors
+    :type colors: (str) or Tuple[str, str]
+    :param c: Either a tuple or a string that has both the text and background colors
+    :type c: (str) or Tuple[str, str]
     :return:
     :rtype:
     """
@@ -14021,7 +14047,8 @@ def easy_print(*args, size=(None, None), end=None, sep=None, location=(None, Non
         _DebugWin.debug_window = _DebugWin(size=size, location=location, font=font, no_titlebar=no_titlebar,
                                            no_button=no_button, grab_anywhere=grab_anywhere, keep_on_top=keep_on_top,
                                            do_not_reroute_stdout=do_not_reroute_stdout)
-    _DebugWin.debug_window.Print(*args, end=end, sep=sep, text_color=text_color, background_color=background_color)
+    txt_color, bg_color = _parse_colors_parm(c or colors)
+    _DebugWin.debug_window.Print(*args, end=end, sep=sep, text_color=text_color or txt_color, background_color=background_color or bg_color)
 
 
 
@@ -14209,6 +14236,35 @@ def _print_to_element(multiline_element, *args, end=None, sep=None, text_color=N
             multiline_element.ParentForm.refresh()
     except:
         pass
+
+
+def _parse_colors_parm(colors):
+    """
+    Parse a colors parameter into its separate colors.
+    Some functions accept a dual colors string/tuple.
+    This function parses the parameter into the component colors
+
+    :param colors: Either a tuple or a string that has both the text and background colors
+    :type colors: (str) or Tuple[str, str]
+    :return: tuple with the individual text and background colors
+    :rtype: Tuple[str, str]
+    """
+    if colors is None:
+        return None, None
+    dual_color = colors
+    kw_text_color = kw_background_color = None
+    try:
+        if isinstance(dual_color, tuple):
+            kw_text_color = dual_color[0]
+            kw_background_color = dual_color[1]
+        elif isinstance(dual_color, str):
+            kw_text_color = dual_color.split(' on ')[0]
+            kw_background_color = dual_color.split(' on ')[1]
+    except Exception as e:
+        print('* warning * you messed up with color formatting', e)
+
+    return kw_text_color, kw_background_color
+
 
 # ============================== set_global_icon ====#
 # Sets the icon to be used by default                #
@@ -18328,6 +18384,37 @@ def main_sdk_help():
     Display a window that will display the docstrings for each PySimpleGUI Element and the Window object
 
     """
+    online_help_links = {
+                        'Button': r'https://pysimplegui.readthedocs.io/en/latest/call%20reference/#button-element',
+                        'ButtonMenu': r'https://pysimplegui.readthedocs.io/en/latest/call%20reference/#buttonmenu-element',
+                        'Canvas': r'https://pysimplegui.readthedocs.io/en/latest/call%20reference/#canvas-element',
+                        'Checkbox': r'https://pysimplegui.readthedocs.io/en/latest/call%20reference/#checkbox-element',
+                        'Column': r'https://pysimplegui.readthedocs.io/en/latest/call%20reference/#column-element',
+                        'Combo': r'https://pysimplegui.readthedocs.io/en/latest/call%20reference/#combo-element',
+                        'Frame': r'https://pysimplegui.readthedocs.io/en/latest/call%20reference/#frame-element',
+                        'Graph': r'https://pysimplegui.readthedocs.io/en/latest/call%20reference/#graph-element',
+                        'HorizontalSeparator': r'https://pysimplegui.readthedocs.io/en/latest/call%20reference/#horizontalseparator-element',
+                        'Image': r'https://pysimplegui.readthedocs.io/en/latest/call%20reference/#image-element',
+                        'Input': r'https://pysimplegui.readthedocs.io/en/latest/call%20reference/#input-element',
+                        'Listbox': r'https://pysimplegui.readthedocs.io/en/latest/call%20reference/#listbox-element',
+                        'Menu': r'https://pysimplegui.readthedocs.io/en/latest/call%20reference/#menu-element',
+                        'Multiline': r'https://pysimplegui.readthedocs.io/en/latest/call%20reference/#multiline-element',
+                        'OptionMenu': r'https://pysimplegui.readthedocs.io/en/latest/call%20reference/#optionmenu-element',
+                        'Output': r'https://pysimplegui.readthedocs.io/en/latest/call%20reference/#output-element',
+                        'Pane': r'https://pysimplegui.readthedocs.io/en/latest/call%20reference/#pane-element',
+                        'ProgressBar': r'https://pysimplegui.readthedocs.io/en/latest/call%20reference/#progressbar-element',
+                        'Radio': r'https://pysimplegui.readthedocs.io/en/latest/call%20reference/#radio-element',
+                        'Slider': r'https://pysimplegui.readthedocs.io/en/latest/call%20reference/#slider-element',
+                        'Spin': r'https://pysimplegui.readthedocs.io/en/latest/call%20reference/#spin-element',
+                        'StatusBar': r'https://pysimplegui.readthedocs.io/en/latest/call%20reference/#statusbar-element',
+                        'Tab': r'https://pysimplegui.readthedocs.io/en/latest/call%20reference/#tab-element',
+                        'TabGroup': r'https://pysimplegui.readthedocs.io/en/latest/call%20reference/#tabgroup-element',
+                        'Table': r'https://pysimplegui.readthedocs.io/en/latest/call%20reference/#table-element',
+                        'Text': r'https://pysimplegui.readthedocs.io/en/latest/call%20reference/#text-element',
+                        'Tree': r'https://pysimplegui.readthedocs.io/en/latest/call%20reference/#tree-element',
+                        'VerticalSeparator': r'https://pysimplegui.readthedocs.io/en/latest/call%20reference/#verticalseparator-element',
+                        'Window': r'https://pysimplegui.readthedocs.io/en/latest/call%20reference/#window',
+                         }
 
     element_classes = Element.__subclasses__()
     element_names = {element.__name__: element for element in element_classes}
@@ -18377,19 +18464,27 @@ def main_sdk_help():
     buttons = [[B(e, pad=(0, 0), size=(22, 1), font='Courier 10')] for e in sorted(element_names.keys())]
     buttons += [[B('Func Search', pad=(0, 0), size=(22, 1), font='Courier 10')]]
     button_col = Col(buttons)
-
-    layout = [vtop([button_col, Multiline(size=(100, 46), key='-ML-', write_only=True, reroute_stdout=True, font='Courier 10')])]
+    mline_col = Column([[Multiline(size=(100, 46), key='-ML-', write_only=True, reroute_stdout=True, font='Courier 10')],
+                        [T(size=(80,1), font='Courier 10 underline', k='-DOC LINK-', enable_events=True)]], pad=(0,0))
+    layout = [vtop([button_col, mline_col])]
     layout += [[CBox('Summary Only', k='-SUMMARY-'),CBox('Display Only PEP8 Functions',default=True, k='-PEP8-') ]]
     # layout += [[Button('Exit', size=(15, 1))]]
 
-    window = Window('SDK API Call Reference', layout, use_default_focus=False, keep_on_top=True, icon=ICON_BASE64_BLOB_THINK)
+    window = Window('SDK API Call Reference', layout, use_default_focus=False, keep_on_top=True, icon=ICON_BASE64_BLOB_THINK, finalize=True)
+    window['-DOC LINK-'].set_cursor('hand1')
+    online_help_link = ''
     ml = window['-ML-']
     while True:  # Event Loop
         event, values = window.read()
         if event in (WIN_CLOSED, 'Exit'):
             break
+        if event == '-DOC LINK-':
+            if webbrowser_available and online_help_link:
+                webbrowser.open_new_tab(online_help_link)
         if event in element_names.keys():
             window['-ML-'].update('')
+            online_help_link = online_help_links.get(event,'')
+            window['-DOC LINK-'].update(online_help_link)
             if not values['-SUMMARY-']:
                 elem = element_names[event]
                 ml.print(help(elem))
@@ -18431,6 +18526,8 @@ def main_sdk_help():
         elif event == 'Func Search':
             search_string = popup_get_text('Search for this in function list:', keep_on_top=True)
             if search_string is not None:
+                    online_help_link = ''
+                    window['-DOC LINK-'].update('')
                     ml.update('')
                     for f_entry in functions_names:
                         f = f_entry[0]
