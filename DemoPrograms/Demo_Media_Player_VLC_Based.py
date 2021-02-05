@@ -10,7 +10,10 @@
 import PySimpleGUI as sg
 import os
 os.add_dll_directory(os.getcwd()) # important for python version after 3.8
+print(os.getcwd())
 import vlc
+# importing pafy module 
+import pafy 
 from sys import platform as PLATFORM
 
 #------- GUI definition & setup --------#
@@ -61,6 +64,7 @@ while True:
         list_player.play()
     if event == 'load':
         if values['-VIDEO_LOCATION-'] and not 'Video URL' in values['-VIDEO_LOCATION-']:
+            #a = pafy.new(values['-VIDEO_LOCATION-']).getbest().url
             media_list.add_media(values['-VIDEO_LOCATION-'])
             list_player.set_media_list(media_list)
             window['-VIDEO_LOCATION-'].update('Video URL or Local Path:') # only add a legit submit
