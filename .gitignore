@@ -2,4 +2,6 @@
 readme_creator/psg_gui.py
 *.pyc
 DemoPrograms
-pdf2.spec
+*.spec
+PySimpleGUI.egg-info
+dist
